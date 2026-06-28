@@ -11,26 +11,24 @@ AWorldClaimVolume::AWorldClaimVolume()
 	ClaimComponent = CreateDefaultSubobject<UWorldClaimComponent>(TEXT("ClaimComponent"));
 	RootComponent = ClaimComponent;
 
-#if WITH_EDITORONLY_DATA
-	EditorBox = CreateDefaultSubobject<UBoxComponent>(TEXT("EditorBox"));
-	EditorBox->SetupAttachment(ClaimComponent);
-	EditorBox->SetBoxExtent(ClaimComponent->ClaimExtent, /*bUpdateOverlaps*/ false);
-	EditorBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	EditorBox->SetCollisionProfileName(TEXT("NoCollision"));
-	EditorBox->SetHiddenInGame(true);
-	EditorBox->SetIsVisualizationComponent(true);
-	EditorBox->ShapeColor = FColor(64, 200, 255);
-#endif
+	// Runtime (not editor-only): the footprint bounds source PCG reads via "Get Actor Data".
+	// Hidden + non-colliding, so it has no gameplay presence — only contributes actor bounds.
+	FootprintBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FootprintBox"));
+	FootprintBox->SetupAttachment(ClaimComponent);
+	FootprintBox->SetBoxExtent(ClaimComponent->ClaimExtent, /*bUpdateOverlaps*/ false);
+	FootprintBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FootprintBox->SetCollisionProfileName(TEXT("NoCollision"));
+	FootprintBox->SetGenerateOverlapEvents(false);
+	FootprintBox->SetHiddenInGame(true);
+	FootprintBox->ShapeColor = FColor(64, 200, 255);
 }
 
 void AWorldClaimVolume::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-#if WITH_EDITORONLY_DATA
-	if (EditorBox && ClaimComponent)
+	if (FootprintBox && ClaimComponent)
 	{
-		EditorBox->SetBoxExtent(ClaimComponent->ClaimExtent, /*bUpdateOverlaps*/ false);
+		FootprintBox->SetBoxExtent(ClaimComponent->ClaimExtent, /*bUpdateOverlaps*/ false);
 	}
-#endif
 }

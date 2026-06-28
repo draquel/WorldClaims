@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6a (registry core) built & PIE-verified, committed (`eece999`). Phases 6b–6e below are designed, not yet built.
+**Status**: Phase 6a (registry core) + 6b Suppress (PCG claim consumption) built & PIE-verified. Phases 6b OwnGraph/Blend and 6c–6e below are designed, not yet built.
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -76,6 +76,35 @@ no circular dependencies. (Shapes: reuse UE volumes/splines per the shape decisi
 | **Map / Compass / AI** | Call `UWorldClaimRegistry` query API directly (get DisplayInfo, priority, shape) | depend on WorldClaims (allowed) |
 | **VoxelWorlds generation** | VoxelWorlds exposes a conditioning **interface**; game-level code implements it from claims | none (interface in VoxelWorlds, impl game-side) |
 
+### How a claim becomes PCG-readable (the tag bridge)
+
+`UWorldClaimComponent::BeginPlay` mirrors the claim's data onto its **owning actor** so PCG needs no
+dependency on this plugin:
+- the umbrella `PCGActorTag` (default `Claim`), **plus**
+- each gameplay tag in `ClaimTags` as an **actor FName tag** (e.g. `Claim.Decoration.Suppress`, `Claim.POI.City`).
+
+The **footprint** is the actor's bounds: `AWorldClaimVolume` carries a runtime, hidden, non-colliding
+`UBoxComponent` sized to `ClaimExtent`, and PCG's `PCGHelpers::GetActorBounds` includes non-colliding
+components — so `Get Actor Data` reads the exact footprint. Native `Claim.*` tags are registered in
+[WorldClaimTags.h](../Source/WorldClaims/Public/WorldClaimTags.h).
+
+### Suppress recipe — verified 6b
+
+A decoration graph clears its ambient scatter inside suppress claims with two stock nodes spliced before the
+spawner:
+
+```
+Voxel Surface Sampler ─── Source ──▶ Difference (density: Binary) ──▶ Static Mesh Spawner
+Get Actor Data ──────── Differences ──▶  ┘
+  (AllWorldActors, ByTag = Claim.Decoration.Suppress, GetSinglePoint → one bounded point per claim)
+```
+
+`Difference` removes every sampler point inside a claim's footprint. Verified in PIE (`PCG_VoxelClaimTest`
+over `VoxelWorldsTest`): with a `Claim.Decoration.Suppress` volume present, **0** of 120 cube instances fell
+inside its ±1200 footprint; destroying the claim and regenerating put **49** back — decoration outside the
+footprint unchanged. (Cosmetic: PCG warns it sanitized the dotted tag name into an attribute name; the actor
+match itself is unaffected.)
+
 ## Terrain conditioning
 
 Two timeframes, both also registering a claim:
@@ -145,8 +174,10 @@ via the Interaction/Inventory/Item plugins.
    spatial query API (box / point / highest-priority, gameplay-tag filtered). Deps Core/Engine/GameplayTags
    only; `EnabledByDefault` (no uproject edit). PIE-verified: overlapping volumes register on BeginPlay,
    queries resolve count/point/box/priority, owners tagged `Claim`, clean unregister on EndPlay.
-2. **6b — PCG consumption**: decoration graphs read claim actors by tag → exclusion (Suppress) /
-   route (OwnGraph) / falloff (Blend). Verify: a claim volume clears/owns decoration in PIE.
+2. **6b — PCG consumption** — Suppress ✅ **DONE**: decoration graphs read claim actors by tag → exclusion
+   (Suppress, verified) / route (OwnGraph) / falloff (Blend) — latter two pending. Native `Claim.*` tags +
+   actor-tag mirroring + runtime footprint box added; `Get Actor Data` → `Difference` recipe verified in PIE
+   (0 instances inside a suppress footprint vs 49 with the claim removed).
 3. **6c — Generation conditioning**: `IVoxelTerrainConditioner` hook in VoxelWorlds generation (CPU
    density-level first), a game-side impl from claims. Verify: a city claim → flat ground generated beneath.
 4. **6d — Seed-based POI placement**: deterministic POI placement → claims + conditioning. Verify: POIs

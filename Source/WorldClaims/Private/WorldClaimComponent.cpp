@@ -43,13 +43,20 @@ void UWorldClaimComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Mirror the discovery tag onto the owner so tag-based consumers (PCG) can find this
-	// claim without any dependency on WorldClaims.
-	if (!PCGActorTag.IsNone())
+	// Mirror discovery + policy tags onto the owner so tag-based consumers (PCG) can find
+	// and filter this claim without any dependency on WorldClaims.
+	if (AActor* OwnerActor = GetOwner())
 	{
-		if (AActor* OwnerActor = GetOwner())
+		// Umbrella discovery tag.
+		if (!PCGActorTag.IsNone())
 		{
 			OwnerActor->Tags.AddUnique(PCGActorTag);
+		}
+		// Each claim gameplay tag as an actor FName tag, e.g. "Claim.Decoration.Suppress",
+		// "Claim.POI.City" — so a PCG "Get Actor Data" filtered by that tag matches this actor.
+		for (const FGameplayTag& Tag : ClaimTags)
+		{
+			OwnerActor->Tags.AddUnique(Tag.GetTagName());
 		}
 	}
 
