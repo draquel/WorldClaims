@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "World Claims",
+	"Description": "A spatial registry of tagged, prioritized world claims (POI/construction footprints) consumed by PCG decoration, map, compass, and AI. Boundary-safe: consumers read by gameplay tag or the registry query API; this plugin depends only on Core/Engine/GameplayTags.",
+	"Category": "Gameplay",
+	"CreatedBy": "Daniel Raquel",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "WorldClaims",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
