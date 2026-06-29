@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6a (registry) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) + 6c CPU generation conditioning + 6d seed-based POI placement (`VoxelWorldPOI` plugin) built & verified. Remaining: 6c GPU/other modes, 6e runtime placements, and the consumers (Map/Compass/AI).
+**Status**: Phase 6 substantially DONE — 6a registry, 6b PCG consumption (Suppress/OwnGraph/Blend), 6c CPU generation conditioning (both heightmap modes), 6d seed-based POI placement, 6e runtime placements (`VoxelWorldPOI` plugin) — all built & verified. Remaining: 6c SphericalPlanet (radial model) + GPU conditioning, Phase 7 (claim/edit dirty → throttled PCG re-decorate), and the consumers (Map/Compass icons, AI avoidance).
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -169,7 +169,7 @@ stream, no edit storage. (Decision: density-level, not deterministic edit-popula
 - The game's conditioner implementation reads the seed-placed POIs (below) and returns their flatten zones.
   Must be a pure function of (seed, region) for determinism on the gen threads.
 
-### Runtime — player placements (campsite): Edit Layer "System" edit
+### Runtime — player placements (campsite): Edit Layer "System" edit ✅ (6e)
 
 A player placing a campsite applies a `System` flatten **edit** via the existing `UVoxelEditManager` →
 dirties the affected chunk(s) → **re-mesh** (existing mechanism; `EEditSource::System`). It *also* registers
@@ -230,8 +230,12 @@ via the Interaction/Inventory/Item plugins.
    registers the conditioner, and spawns POI claims. Unit-verified (`VoxelWorlds.POI.*`: determinism,
    cross-region consistency, conditioner zones); PIE-verified (seed 4325 → 11 deterministic POI claims
    registered + conditioner registered). The bridge that closes the loop: claims ↔ conditioning ↔ PCG.
-5. **6e — Runtime placements**: campsite = System edit (flatten) + claim; ties into Phase 7 (claim dirty →
-   PCG re-decorate). GPU conditioning path.
+5. **6e — Runtime placements** ✅ **DONE** (`VoxelWorldPOI`): `UVoxelWorldPOIPlacement::PlaceCampsite` flattens
+   already-generated terrain to a target height in a cylinder via a **System edit on the existing Edit Layer**
+   (`UVoxelEditManager::ApplyEdit`, `EEditSource::System`, batched in a Begin/EndEditOperation → dirties chunks →
+   re-mesh — the same path as digging) **and** registers a `Claim.Construction.Camp` (+ `Decoration.Suppress`)
+   claim. No new terrain mechanism — claims + the edit layer compose. PIE-verified: a campsite → flat pad
+   re-meshed (2533 voxel edits) + claim registered. Forward link: claim-dirty → PCG re-decorate is Phase 7.
 6. **Consumers**: Map/Compass icons from the registry; AI avoidance (later).
 
 ## Open questions
