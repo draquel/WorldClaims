@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6a (registry core) + 6b Suppress (PCG claim consumption) built & PIE-verified. Phases 6b OwnGraph/Blend and 6c–6e below are designed, not yet built.
+**Status**: Phase 6a (registry core) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) built & PIE-verified. Phases 6c–6e below are designed, not yet built.
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -105,6 +105,37 @@ inside its ±1200 footprint; destroying the claim and regenerating put **49** ba
 footprint unchanged. (Cosmetic: PCG warns it sanitized the dotted tag name into an attribute name; the actor
 match itself is unaffected.)
 
+### OwnGraph recipe — verified 6b
+
+The claim's footprint suppresses ambient **and** gets its own decoration. Two branches off the sampler,
+both reading `Claim.Decoration.OwnGraph` claims, merged at the output:
+
+```
+Sampler ─ Difference (Differences = OwnGraph claims) ──▶ ambient spawner   (ambient OUTSIDE footprint)
+Sampler ─ Intersection (Source1 = OwnGraph claims) ─▶ To Point ─▶ own spawner   (own decoration INSIDE)
+```
+
+`Intersection` is the inverse of `Difference` — it keeps only points inside the footprint. The own spawner
+is a distinct mesh here (the placeholder for a per-POI subgraph; per-type routing reuses the biome-dispatcher
+pattern, a 6d concern). Verified in PIE (`PCG_VoxelClaimOwnGraph`): inside the footprint **0** ambient cubes /
+**49** own meshes; **0** own meshes leaked outside.
+
+### Blend recipe — verified 6b
+
+Ambient *fades* inside the footprint instead of a hard cut. The inside points are thinned and merged back
+with the untouched outside:
+
+```
+Sampler ─ Difference (Blend claims) ─────────────────────────┐  (outside: full)
+Sampler ─ Intersection (Blend claims) ─ To Point ─ Random Choice (ratio 0.3, take Chosen) ─┤─ Merge ─▶ spawner
+```
+
+Verified in PIE (`PCG_VoxelClaimBlend`): inside the footprint ambient retained at ~**37 %** area-density vs
+full outside — between Suppress (0 %) and ambient (100 %). (This is a uniform partial fade; a true
+edge-graded falloff ring — Biome Core's exclusion-spline falloff is the reference — is the production
+refinement.) **Tooling note:** wiring `Intersection`→`Random Choice` auto-inserts a *type filter* that drops
+the intersection's lazy spatial output; insert an explicit **To Point** before `Random Choice` instead.
+
 ## Terrain conditioning
 
 Two timeframes, both also registering a claim:
@@ -174,10 +205,10 @@ via the Interaction/Inventory/Item plugins.
    spatial query API (box / point / highest-priority, gameplay-tag filtered). Deps Core/Engine/GameplayTags
    only; `EnabledByDefault` (no uproject edit). PIE-verified: overlapping volumes register on BeginPlay,
    queries resolve count/point/box/priority, owners tagged `Claim`, clean unregister on EndPlay.
-2. **6b — PCG consumption** — Suppress ✅ **DONE**: decoration graphs read claim actors by tag → exclusion
-   (Suppress, verified) / route (OwnGraph) / falloff (Blend) — latter two pending. Native `Claim.*` tags +
-   actor-tag mirroring + runtime footprint box added; `Get Actor Data` → `Difference` recipe verified in PIE
-   (0 instances inside a suppress footprint vs 49 with the claim removed).
+2. **6b — PCG consumption** ✅ **DONE** (all three policies): decoration graphs read claim actors by tag →
+   exclusion (**Suppress**), own decoration (**OwnGraph**), partial fade (**Blend**). Native `Claim.*` tags +
+   actor-tag mirroring + runtime footprint box; recipes (`Difference` / `Intersection` / `Random Choice`) all
+   PIE-verified by per-zone instance counts. A true edge-graded Blend falloff is a later refinement.
 3. **6c — Generation conditioning**: `IVoxelTerrainConditioner` hook in VoxelWorlds generation (CPU
    density-level first), a game-side impl from claims. Verify: a city claim → flat ground generated beneath.
 4. **6d — Seed-based POI placement**: deterministic POI placement → claims + conditioning. Verify: POIs
