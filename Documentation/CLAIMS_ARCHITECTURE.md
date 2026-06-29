@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6 substantially DONE — 6a registry, 6b PCG consumption (Suppress/OwnGraph/Blend), 6c CPU generation conditioning (both heightmap modes), 6d seed-based POI placement, 6e runtime placements (`VoxelWorldPOI` plugin) — all built & verified. Remaining: 6c SphericalPlanet (radial model) + GPU conditioning, Phase 7 (claim/edit dirty → throttled PCG re-decorate), and the consumers (Map/Compass icons, AI avoidance).
+**Status**: Phases 6 + 7 substantially DONE — 6a registry, 6b PCG consumption (Suppress/OwnGraph/Blend), 6c CPU generation conditioning (both heightmap modes), 6d seed-based POI placement, 6e runtime placements (`VoxelWorldPOI` plugin), 7 claim-dirty → throttled PCG re-decorate (`UClaimDecorationRefreshSubsystem`) — all built & verified. Remaining: 6c SphericalPlanet (radial model) + GPU conditioning, cell-precise re-decorate dirtying, and the consumers (Map/Compass icons, AI avoidance).
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -236,7 +236,20 @@ via the Interaction/Inventory/Item plugins.
    re-mesh — the same path as digging) **and** registers a `Claim.Construction.Camp` (+ `Decoration.Suppress`)
    claim. No new terrain mechanism — claims + the edit layer compose. PIE-verified: a campsite → flat pad
    re-meshed (2533 voxel edits) + claim registered. Forward link: claim-dirty → PCG re-decorate is Phase 7.
-6. **Consumers**: Map/Compass icons from the registry; AI avoidance (later).
+6. **7 — Claim-dirty → throttled PCG re-decorate** ✅ **DONE** (`VoxelWorldPOI`): `UWorldClaimRegistry` now
+   fires `OnClaimsChanged(FBox ChangedBounds)` on register/unregister; a game-level
+   `UClaimDecorationRefreshSubsystem` (a `UTickableWorldSubsystem`, the one place that may depend on BOTH
+   WorldClaims *and* PCG without crossing a plugin boundary) listens, accumulates the changed bounds, and on a
+   **debounce** window (`DebounceSeconds`, default 0.4) force-regenerates every `UPCGComponent` whose grid
+   bounds overlap them (`GenerateLocal(true)`, re-querying claims so the `Difference`/`Intersection` clears or
+   restores). PCG's own actor-change tracking is **editor-only**, so an explicit runtime bridge is required; the
+   debounce coalesces claim bursts so churn doesn't thrash PCG. PIE-verified: a runtime campsite
+   (`Claim.Decoration.Suppress` at (300,300)) → registry 11→12 → ~0.4 s later the bridge auto-regenerated the
+   **2** overlapping PCG volumes (the map's biome decoration + a probe) with **no manual generate**; a far-away
+   startup POI claim correctly regenerated 0. The Difference-based suppression *clearing* on regen was proven in
+   6b. **Deferred**: cell-precise dirtying (currently whole-component regen of overlappers) and edit-layer dirty
+   → PCG (terrain-shape-only changes; claims are the semantic trigger).
+7. **Consumers**: Map/Compass icons from the registry; AI avoidance (later).
 
 ## Open questions
 

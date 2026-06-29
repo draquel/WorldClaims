@@ -10,6 +10,12 @@
 class UWorldClaimComponent;
 
 /**
+ * Fired when a claim is registered or unregistered, carrying the affected world-space bounds.
+ * Consumers (e.g. the PCG re-decoration bridge) use it to dirty the region the claim covers.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnWorldClaimsChanged, const FBox& /*ChangedBounds*/);
+
+/**
  * Authoritative per-world registry of active claims.
  *
  * A world subsystem (game worlds only). UWorldClaimComponents register on BeginPlay
@@ -77,6 +83,12 @@ public:
 	/** Number of live registered claims. */
 	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	int32 GetClaimCount() const;
+
+	/**
+	 * Fired on register/unregister with the changed claim's bounds. Used by the PCG re-decoration
+	 * bridge (Phase 7) to dirty + regenerate decoration overlapping the changed region.
+	 */
+	FOnWorldClaimsChanged OnClaimsChanged;
 
 protected:
 	// Game worlds only (PIE + standalone), never editor preview worlds.

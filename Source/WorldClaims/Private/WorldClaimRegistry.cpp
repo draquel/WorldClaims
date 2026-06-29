@@ -46,6 +46,8 @@ void UWorldClaimRegistry::RegisterClaim(UWorldClaimComponent* Claim)
 	RegisteredClaims.Add(Claim);
 	UE_LOG(LogWorldClaims, Verbose, TEXT("Registered claim '%s' (priority %d, %d tag(s)); %d total."),
 		*GetNameSafe(Claim->GetOwner()), Claim->Priority, Claim->ClaimTags.Num(), RegisteredClaims.Num());
+
+	OnClaimsChanged.Broadcast(Claim->GetClaimBounds());
 }
 
 void UWorldClaimRegistry::UnregisterClaim(UWorldClaimComponent* Claim)
@@ -65,6 +67,9 @@ void UWorldClaimRegistry::UnregisterClaim(UWorldClaimComponent* Claim)
 	{
 		UE_LOG(LogWorldClaims, Verbose, TEXT("Unregistered claim '%s'; %d remain."),
 			*GetNameSafe(Claim->GetOwner()), RegisteredClaims.Num());
+
+		// Claim is still valid here (called from EndPlay, before destruction) so its bounds are queryable.
+		OnClaimsChanged.Broadcast(Claim->GetClaimBounds());
 	}
 }
 
