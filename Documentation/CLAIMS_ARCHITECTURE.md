@@ -215,12 +215,14 @@ via the Interaction/Inventory/Item plugins.
    exclusion (**Suppress**), own decoration (**OwnGraph**), partial fade (**Blend**). Native `Claim.*` tags +
    actor-tag mirroring + runtime footprint box; recipes (`Difference` / `Intersection` / `Random Choice`) all
    PIE-verified by per-zone instance counts. A true edge-graded Blend falloff is a later refinement.
-3. **6c — Generation conditioning** — CPU ✅ **DONE**: `IVoxelTerrainConditioner` + `FVoxelConditioningZone`
-   hook in VoxelWorlds generation. The chunk manager gathers zones per chunk into the generation request;
-   the CPU InfinitePlane generator blends the per-column terrain height toward each zone's target (smoothstep
-   falloff) before the SDF — so density/material/surface all flatten, deterministically, with no edit storage.
-   Unit-verified (`VoxelWorlds.Generation.Conditioning.*`). Remaining: IslandBowl/Spherical + GPU compute path,
-   and the game-side **claims-driven** conditioner impl (lands with 6d POI placement).
+3. **6c — Generation conditioning** — CPU **heightmap modes** ✅ **DONE**: `IVoxelTerrainConditioner` +
+   `FVoxelConditioningZone` hook in VoxelWorlds generation. The chunk manager gathers zones per chunk into the
+   generation request; the CPU generator blends the per-column terrain height toward each zone's target
+   (smoothstep falloff) before the SDF — so density/material/surface all flatten, deterministically, no edit
+   storage. Applied to **both heightmap modes — InfinitePlane and IslandBowl**
+   (`VoxelWorlds.Generation.Conditioning.{FlattensTerrain,FlattensIslandBowl}`). **Deferred**: SphericalPlanet
+   (radial surface — the XY-footprint+Z-height zone doesn't map; needs a radial-zone model) and the GPU compute
+   path (its needs may shift with 6e/7's dynamic zones). The game-side **claims-driven** conditioner impl is 6d.
 4. **6d — Seed-based POI placement** ✅ **DONE** (in-tree plugin `VoxelWorldPOI`, parent repo): deterministic
    seed-hash placement (`FPOIPlacement`) → a per-POI `FVoxelConditioningZone` (via `FPOITerrainConditioner :
    IVoxelTerrainConditioner`, flattening to the natural ground height) **and** an `AWorldClaimVolume`
