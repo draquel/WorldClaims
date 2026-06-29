@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6a (registry core) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) + 6c CPU generation conditioning built & verified. Remaining: 6c GPU/other modes + claims-driven impl, and 6d–6e below.
+**Status**: Phase 6a (registry) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) + 6c CPU generation conditioning + 6d seed-based POI placement (`VoxelWorldPOI` plugin) built & verified. Remaining: 6c GPU/other modes, 6e runtime placements, and the consumers (Map/Compass/AI).
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -221,8 +221,13 @@ via the Interaction/Inventory/Item plugins.
    falloff) before the SDF — so density/material/surface all flatten, deterministically, with no edit storage.
    Unit-verified (`VoxelWorlds.Generation.Conditioning.*`). Remaining: IslandBowl/Spherical + GPU compute path,
    and the game-side **claims-driven** conditioner impl (lands with 6d POI placement).
-4. **6d — Seed-based POI placement**: deterministic POI placement → claims + conditioning. Verify: POIs
-   appear deterministically with flat ground + themed decoration.
+4. **6d — Seed-based POI placement** ✅ **DONE** (in-tree plugin `VoxelWorldPOI`, parent repo): deterministic
+   seed-hash placement (`FPOIPlacement`) → a per-POI `FVoxelConditioningZone` (via `FPOITerrainConditioner :
+   IVoxelTerrainConditioner`, flattening to the natural ground height) **and** an `AWorldClaimVolume`
+   (`Claim.POI.City` + `Claim.Decoration.Suppress`). `UPOIPlacementSubsystem` resolves the chunk manager,
+   registers the conditioner, and spawns POI claims. Unit-verified (`VoxelWorlds.POI.*`: determinism,
+   cross-region consistency, conditioner zones); PIE-verified (seed 4325 → 11 deterministic POI claims
+   registered + conditioner registered). The bridge that closes the loop: claims ↔ conditioning ↔ PCG.
 5. **6e — Runtime placements**: campsite = System edit (flatten) + claim; ties into Phase 7 (claim dirty →
    PCG re-decorate). GPU conditioning path.
 6. **Consumers**: Map/Compass icons from the registry; AI avoidance (later).
