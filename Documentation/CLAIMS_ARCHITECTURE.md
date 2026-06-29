@@ -1,6 +1,6 @@
 # World Claims — Architecture & Design
 
-**Status**: Phase 6a (registry core) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) built & PIE-verified. Phases 6c–6e below are designed, not yet built.
+**Status**: Phase 6a (registry core) + 6b (PCG claim consumption — Suppress / OwnGraph / Blend) + 6c CPU generation conditioning built & verified. Remaining: 6c GPU/other modes + claims-driven impl, and 6d–6e below.
 **Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
 **Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
 player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
@@ -142,6 +142,12 @@ Two timeframes, both also registering a claim:
 
 ### Generation-time — deterministic POIs (cities): generator density-level hook
 
+✅ **CPU path implemented (6c)** in VoxelWorlds: `FVoxelConditioningZone` + `IVoxelTerrainConditioner` in
+[VoxelTerrainConditioning.h](../../VoxelWorlds/Source/VoxelGeneration/Public/VoxelTerrainConditioning.h);
+`UVoxelChunkManager::AddConditioningZone` / `SetTerrainConditioner` gather zones per chunk; the InfinitePlane
+CPU generator applies the height blend. Below is the original design (the shipped interface uses `FBox2D` for
+the region and a center/inner-radius/falloff zone):
+
 VoxelWorlds defines a boundary-safe interface, e.g. `IVoxelTerrainConditioner`:
 
 ```cpp
@@ -209,8 +215,12 @@ via the Interaction/Inventory/Item plugins.
    exclusion (**Suppress**), own decoration (**OwnGraph**), partial fade (**Blend**). Native `Claim.*` tags +
    actor-tag mirroring + runtime footprint box; recipes (`Difference` / `Intersection` / `Random Choice`) all
    PIE-verified by per-zone instance counts. A true edge-graded Blend falloff is a later refinement.
-3. **6c — Generation conditioning**: `IVoxelTerrainConditioner` hook in VoxelWorlds generation (CPU
-   density-level first), a game-side impl from claims. Verify: a city claim → flat ground generated beneath.
+3. **6c — Generation conditioning** — CPU ✅ **DONE**: `IVoxelTerrainConditioner` + `FVoxelConditioningZone`
+   hook in VoxelWorlds generation. The chunk manager gathers zones per chunk into the generation request;
+   the CPU InfinitePlane generator blends the per-column terrain height toward each zone's target (smoothstep
+   falloff) before the SDF — so density/material/surface all flatten, deterministically, with no edit storage.
+   Unit-verified (`VoxelWorlds.Generation.Conditioning.*`). Remaining: IslandBowl/Spherical + GPU compute path,
+   and the game-side **claims-driven** conditioner impl (lands with 6d POI placement).
 4. **6d — Seed-based POI placement**: deterministic POI placement → claims + conditioning. Verify: POIs
    appear deterministically with flat ground + themed decoration.
 5. **6e — Runtime placements**: campsite = System edit (flatten) + claim; ties into Phase 7 (claim dirty →
