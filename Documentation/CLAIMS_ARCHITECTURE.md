@@ -220,9 +220,15 @@ via the Interaction/Inventory/Item plugins.
    generation request; the CPU generator blends the per-column terrain height toward each zone's target
    (smoothstep falloff) before the SDF — so density/material/surface all flatten, deterministically, no edit
    storage. Applied to **both heightmap modes — InfinitePlane and IslandBowl**
-   (`VoxelWorlds.Generation.Conditioning.{FlattensTerrain,FlattensIslandBowl}`). **Deferred**: SphericalPlanet
-   (radial surface — the XY-footprint+Z-height zone doesn't map; needs a radial-zone model) and the GPU compute
-   path (its needs may shift with 6e/7's dynamic zones). The game-side **claims-driven** conditioner impl is 6d.
+   (`VoxelWorlds.Generation.Conditioning.{FlattensTerrain,FlattensIslandBowl}`); the GPU heightmap branch conditions
+   too (`GpuApplyConditioning`). **SphericalPlanet** ✅ (spherical Phase 5, 2026-10-17; VoxelWorlds
+   `WORLD_MODES_REVIEW_PLAN.md` §19): a planet zone is a cap on the datum sphere (`FVoxelConditioningZone::Direction`,
+   great-circle radii, an altitude target), applied on the CPU and the GPU; a conditioner answers
+   `GatherConditioningOnSphere` for a planet (the POI conditioner returns its flattened POIs as caps). On a planet a
+   POI's claims stand in its pad's tangent frame; the edit validator, scatter's suppression and the registry's point
+   query already invert the claim's transform, so rotated claims protect and suppress unchanged (the registry's box
+   query stays an AABB of the oriented box). World Partition stays deferred for planets. The game-side
+   **claims-driven** conditioner impl is 6d.
 4. **6d — Seed-based POI placement** ✅ **DONE** (in-tree plugin `VoxelWorldPOI`, parent repo): deterministic
    seed-hash placement (`FPOIPlacement`) → a per-POI `FVoxelConditioningZone` (via `FPOITerrainConditioner :
    IVoxelTerrainConditioner`, flattening to the natural ground height) **and** an `AWorldClaimVolume`
