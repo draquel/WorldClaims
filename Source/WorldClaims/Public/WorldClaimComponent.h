@@ -36,42 +36,42 @@ public:
 	UWorldClaimComponent();
 
 	/** Semantic tags: Claim.POI.City, Claim.Construction.Camp, Claim.Decoration.Suppress, etc. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claim")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claims")
 	FGameplayTagContainer ClaimTags;
 
 	/** Higher priority wins where footprints overlap (decoration policy, map layering). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claim")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claims")
 	int32 Priority = 0;
 
 	/** Map / Compass presentation. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claim")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claims")
 	FWorldClaimDisplayInfo DisplayInfo;
 
 	/** Box half-extents (component local space) describing the claim footprint. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claim")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claims")
 	FVector ClaimExtent = FVector(500.0f, 500.0f, 500.0f);
 
 	/**
 	 * Actor tag mirrored onto the owner at BeginPlay so PCG (and any tag-based consumer)
 	 * can discover claims without depending on this plugin. Empty = don't tag the owner.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claim")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Claims")
 	FName PCGActorTag = FName(TEXT("Claim"));
 
 	/** World-space axis-aligned bounds of the (possibly rotated) claim box. */
-	UFUNCTION(BlueprintCallable, Category = "World Claim")
+	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	FBox GetClaimBounds() const;
 
 	/** True if WorldPoint is inside the oriented claim box. */
-	UFUNCTION(BlueprintCallable, Category = "World Claim")
+	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	bool ContainsPoint(const FVector& WorldPoint) const;
 
 	/** True if this claim carries every tag in Tags (empty Tags = always true). */
-	UFUNCTION(BlueprintCallable, Category = "World Claim")
+	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	bool HasAllTags(const FGameplayTagContainer& Tags) const;
 
 	/** True if this claim carries any tag in Tags (empty Tags = always true). */
-	UFUNCTION(BlueprintCallable, Category = "World Claim")
+	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	bool HasAnyTags(const FGameplayTagContainer& Tags) const;
 
 protected:

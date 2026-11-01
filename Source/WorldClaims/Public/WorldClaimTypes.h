@@ -20,15 +20,15 @@ struct WORLDCLAIMS_API FWorldClaimDisplayInfo
 	GENERATED_BODY()
 
 	/** Human-readable name shown on the map / compass (e.g. "Ravenhold"). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claim|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claims|Display")
 	FText Label;
 
 	/** Marker icon. Soft ref so the map can stream icons without hard-loading every claim. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claim|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claims|Display")
 	TSoftObjectPtr<UTexture2D> Icon;
 
 	/** Marker tint / category color. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claim|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Claims|Display")
 	FLinearColor Color = FLinearColor::White;
 
 	/** True if there is anything worth drawing for this claim. */

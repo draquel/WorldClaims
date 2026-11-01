@@ -28,7 +28,7 @@ public:
 	AWorldClaimVolume();
 
 	/** The claim this volume represents. */
-	UFUNCTION(BlueprintCallable, Category = "World Claim")
+	UFUNCTION(BlueprintCallable, Category = "World Claims")
 	UWorldClaimComponent* GetClaimComponent() const { return ClaimComponent; }
 
 protected:
@@ -36,7 +36,7 @@ protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 private:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "World Claim", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "World Claims", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWorldClaimComponent> ClaimComponent;
 
 	/**
@@ -45,6 +45,6 @@ private:
 	 * (PCGHelpers::GetActorBounds includes non-colliding components). Doubles as the in-editor
 	 * footprint wireframe.
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "World Claim", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "World Claims", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UBoxComponent> FootprintBox;
 };
