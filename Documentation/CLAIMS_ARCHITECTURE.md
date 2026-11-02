@@ -1,13 +1,14 @@
 # World Claims — Architecture & Design
 
-**Status**: Phases 6 + 7 substantially DONE — 6a registry, 6b PCG consumption (Suppress/OwnGraph/Blend), 6c CPU generation conditioning (both heightmap modes), 6d seed-based POI placement, 6e runtime placements (`VoxelWorldPOI` plugin), 7 claim-dirty → throttled PCG re-decorate (`UClaimDecorationRefreshSubsystem`) — all built & verified. Remaining: 6c SphericalPlanet (radial model) + GPU conditioning, cell-precise re-decorate dirtying, and the consumers (Map/Compass icons, AI avoidance).
-**Plugin**: `WorldClaims` (new, dedicated, game-level — name adjustable).
-**Purpose**: A spatial registry of *claims* — tagged, prioritized world regions produced by POIs and
-player constructions and consumed by PCG decoration, Map, Compass, and AI. Includes terrain conditioning
-(flat ground under POIs/placements).
-**Related**: VoxelWorlds [PCG_DECORATION_ARCHITECTURE.md](../../VoxelWorlds/Documentation/Research/PCG_DECORATION_ARCHITECTURE.md),
-[EDIT_LAYER.md](../../VoxelWorlds/Documentation/Features/EDIT_LAYER.md),
-[BIOME_SYSTEM.md](../../VoxelWorlds/Documentation/Features/BIOME_SYSTEM.md).
+> State as of 2026-11-02 (code review CR5).
+
+**Purpose**: A spatial registry of *claims*: tagged, prioritized world regions produced by POIs and constructions and
+consumed by PCG decoration, scatter suppression, edit protection, the map and wildlife spawning. Terrain conditioning
+(flat ground under POIs) is the companion mechanism described here. The registry and the policy tags are this plugin;
+the consumers live in VoxelWorldPOI (`Plugins/VoxelWorldPOI/Documentation/POI_SYSTEM.md`) and the conditioning hook in
+VoxelWorlds.
+**Related**: `Plugins/VoxelWorlds/Documentation/Research/PCG_DECORATION_ARCHITECTURE.md`,
+`Plugins/VoxelWorlds/Documentation/Features/EDIT_LAYER.md`, `Plugins/VoxelWorlds/Documentation/Features/BIOME_SYSTEM.md`.
 
 ---
 
@@ -36,7 +37,8 @@ hook** (generation-time). A placement (a city, a campsite) produces **both**: a 
 ```
 
 - **Edit Layer = voxel shape** (player + system edits, runtime). Changing it → chunks **re-mesh** (existing).
-- **Claims = semantics** (region meaning/policy/display). Changing them → PCG cells **re-decorate** (Phase 7).
+- **Claims = semantics** (region meaning/policy/display). Changing them → PCG components **re-decorate** and scatter
+  exclusion volumes follow (the bridges in VoxelWorldPOI).
 - The terrain re-mesh and the decoration re-gen are **independent dirtying paths** for two different layers.
 
 ## Core model
@@ -46,7 +48,7 @@ FWorldClaim = {
   Shape        // backed by a UE volume / spline component (precise footprint; PCG- and AI-native)
   Priority     // higher wins where footprints overlap
   Tags         // FGameplayTagContainer: Claim.POI.City, Claim.Construction.Camp,
-               //   Claim.Decoration.Suppress / .OwnGraph / .Blend, ...
+               //   Claim.Decoration.Suppress / .OwnGraph / .Blend / .InheritBiome, ...
   DisplayInfo  // icon / label / color for Map & Compass
   Owner        // the producing actor (POI, construction)
 }
@@ -57,14 +59,18 @@ Decoration **policy is gameplay tags**, not a PCG field — so the claims plugin
 
 ## Plugin architecture (3 pieces, all generic)
 
-- **`UWorldClaimRegistry`** — a world subsystem; the authoritative registry. Spatial query API
-  ("claims overlapping this box/point, filtered by tag", with priority resolution). Map, Compass, AI call this.
+- **`UWorldClaimRegistry`** — a world subsystem (game worlds); the authoritative registry. Spatial query API
+  (`QueryClaimsInBox`, `GetHighestPriorityClaimAt`, `GetAllClaims`, tag-filtered) and `OnClaimsChanged(FBox)` on every
+  register and unregister. The map markers, the edit validator, the scatter and PCG bridges and the wildlife spawner
+  use it.
 - **`UWorldClaimComponent`** — attach to any actor to make it a claim; registers/unregisters with the
-  registry, carries Shape/Tags/Priority/DisplayInfo. **Also tags its owning actor** so PCG can find it.
+  registry, carries `ClaimTags`, `Priority`, `DisplayInfo` (`FWorldClaimDisplayInfo`: label, icon, colour) and
+  `ClaimExtent` (an oriented box in the component's frame). **Also tags its owning actor** so PCG can find it.
 - **`AWorldClaimVolume`** — a convenience box/volume actor that *is* a claim (designer/hand-placed use).
 
 **Dependencies**: `Core`, `CoreUObject`, `Engine`, `GameplayTags` only. **Not** PCG, **not** VoxelWorlds —
-no circular dependencies. (Shapes: reuse UE volumes/splines per the shape decision.)
+no circular dependencies. A claim's shape is the component's oriented box; the registry's box query tests an AABB of
+it, while point tests invert the claim's transform.
 
 ## Boundary-safe consumption
 
@@ -73,7 +79,7 @@ no circular dependencies. (Shapes: reuse UE volumes/splines per the shape decisi
 | Consumer | Mechanism | Coupling |
 |----------|-----------|----------|
 | **PCG decoration** | Reads claim actors **by tag** (`Get Actor Data` filtered by `Claim.*`) → `Difference` (Suppress) / route to a graph (OwnGraph) / falloff (Blend) | none (PCG reads tags) |
-| **Map / Compass / AI** | Call `UWorldClaimRegistry` query API directly (get DisplayInfo, priority, shape) | depend on WorldClaims (allowed) |
+| **Map, edit protection, scatter, wildlife** | Game-level code (VoxelWorldPOI) calls the `UWorldClaimRegistry` query API and listens to `OnClaimsChanged` | depend on WorldClaims (allowed) |
 | **VoxelWorlds generation** | VoxelWorlds exposes a conditioning **interface**; game-level code implements it from claims | none (interface in VoxelWorlds, impl game-side) |
 
 ### How a claim becomes PCG-readable (the tag bridge)
@@ -86,7 +92,10 @@ dependency on this plugin:
 The **footprint** is the actor's bounds: `AWorldClaimVolume` carries a runtime, hidden, non-colliding
 `UBoxComponent` sized to `ClaimExtent`, and PCG's `PCGHelpers::GetActorBounds` includes non-colliding
 components — so `Get Actor Data` reads the exact footprint. Native `Claim.*` tags are registered in
-[WorldClaimTags.h](../Source/WorldClaims/Public/WorldClaimTags.h).
+[WorldClaimTags.h](../Source/WorldClaims/Public/WorldClaimTags.h): `Claim`, `Claim.POI`, `Claim.POI.City`,
+`Claim.POI.Dungeon`, `Claim.Construction`, `Claim.Construction.Camp`, `Claim.Decoration.Suppress`, `.OwnGraph`,
+`.InheritBiome`, `.Blend`. Game-specific tags (`Claim.POI.Tower`, `Claim.Protection.NoEdit`, `Claim.Map.Hidden`, ...)
+are declared by the game layer (VoxelWorldPOI's `POITags.h`).
 
 ### Suppress recipe — verified 6b
 
@@ -142,11 +151,15 @@ Two timeframes, both also registering a claim:
 
 ### Generation-time — deterministic POIs (cities): generator density-level hook
 
-✅ **CPU path implemented (6c)** in VoxelWorlds: `FVoxelConditioningZone` + `IVoxelTerrainConditioner` in
-[VoxelTerrainConditioning.h](../../VoxelWorlds/Source/VoxelGeneration/Public/VoxelTerrainConditioning.h);
-`UVoxelChunkManager::AddConditioningZone` / `SetTerrainConditioner` gather zones per chunk; the InfinitePlane
-CPU generator applies the height blend. Below is the original design (the shipped interface uses `FBox2D` for
-the region and a center/inner-radius/falloff zone):
+Implemented in VoxelWorlds: `FVoxelConditioningZone` + `IVoxelTerrainConditioner` in
+`Plugins/VoxelWorlds/Source/VoxelGeneration/Public/VoxelTerrainConditioning.h`; `UVoxelChunkManager::AddConditioningZone`
+/ `SetTerrainConditioner` gather zones per chunk into the generation request, and the generator blends each column's
+terrain height toward the zone's target (smoothstep falloff) before the SDF, so density, material and surface all
+flatten, deterministically, with no edit storage. Every world mode: InfinitePlane and IslandBowl on the CPU and the
+GPU (`GpuApplyConditioning`); on a planet a zone is a cap on the datum sphere (`FVoxelConditioningZone::Direction`,
+great-circle radii, an altitude target), CPU and GPU, answered by `GatherConditioningOnSphere`. The game's conditioner
+is VoxelWorldPOI's `FPOITerrainConditioner`. The design sketch (the shipped interface takes an `FBox2D` region and a
+centre / inner-radius / falloff zone):
 
 VoxelWorlds defines a boundary-safe interface, e.g. `IVoxelTerrainConditioner`:
 
@@ -163,18 +176,19 @@ terrain height/density toward the zone's target** (with edge falloff): `H'(x,y) 
 Weight(x,y))`. The base **is** flat there — deterministic by construction, consistent everywhere as chunks
 stream, no edit storage. (Decision: density-level, not deterministic edit-population.)
 
-- **Heightmap modes** (InfinitePlane): straightforward height blend.
-- **GPU generation**: the conditioner supplies the chunk's zones as compute-shader input (a small per-chunk
-  buffer); the shader applies the blend. (Implementation note — the main added complexity of this path.)
-- The game's conditioner implementation reads the seed-placed POIs (below) and returns their flatten zones.
-  Must be a pure function of (seed, region) for determinism on the gen threads.
+- **GPU generation**: the chunk's zones go to the compute shader as a small per-chunk buffer; the shader applies
+  the same blend.
+- The game's conditioner reads the seed-placed POIs (below) and returns their flatten zones. It must be a pure
+  function of (seed, region) for determinism on the generation threads.
 
-### Runtime — player placements (campsite): Edit Layer "System" edit ✅ (6e)
+### Runtime — constructions: Edit Layer "System" edit
 
-A player placing a campsite applies a `System` flatten **edit** via the existing `UVoxelEditManager` →
-dirties the affected chunk(s) → **re-mesh** (existing mechanism; `EEditSource::System`). It *also* registers
-a claim. No new terrain mechanism — reuses the Edit Layer. The claim drives PCG re-decoration (Phase 7) and
-the map marker.
+A runtime construction that needs flat ground applies a `System` flatten **edit** through `UVoxelEditManager`
+(`EEditSource::System`, dirtying and re-meshing like any edit) and registers a claim; the claim drives the
+re-decoration and the map marker. The project has no such construction at present: the campsite flatten built for it
+had no caller and was deleted in CR1 (`UVoxelWorldPOIPlacement::PlaceCampsite`, D-CR17), and a campsite placed from a
+kit stands on the ground as it is. System edits a game stamps (dungeons) begin their operations outside the undo
+history, so a player's undo never takes them back.
 
 ## Seed-based POI placement (deterministic)
 
@@ -188,7 +202,7 @@ VoxelWorlds stays POI-agnostic — it only calls the conditioning hook.
 
 ## Multiplayer
 
-Server-authoritative. **Constructions** (dynamic — campsites, player builds) replicate as replicated claim
+Server-authoritative. **Constructions** (dynamic — player builds) replicate as replicated claim
 actors/components; their flatten edits go through the server-authoritative Edit Layer. **POIs** are
 deterministic (seed-based) so they exist identically on every machine without per-instance replication.
 Consumers (PCG/Map/Compass/AI) are local + deterministic off these replicated/deterministic inputs. PCG
@@ -200,69 +214,37 @@ via the Interaction/Inventory/Item plugins.
 | Part | Home | Why |
 |------|------|-----|
 | Claims registry / component / volume + query API | **`WorldClaims` plugin** (generic) | reusable, no game/voxel specifics |
-| Seed-based POI placement + conditioner impl + runtime placement glue | **game-level** (game module or a thin integration plugin, e.g. alongside `DungeonVoxelIntegration`) | knows POI types; bridges claims ↔ VoxelWorlds |
+| Seed-based POI placement, conditioner, the claim bridges (scatter, PCG, edit protection, markers) | **VoxelWorldPOI** (a parent-repository game-level plugin) | knows POI types; bridges claims ↔ VoxelWorlds ↔ PCG |
 | `IVoxelTerrainConditioner` hook + generator call site | **VoxelWorlds** (submodule) | boundary-safe interface; impl supplied by game |
 | PCG-side exclusion/policy graph patterns | **VoxelPCG / decoration graphs** | reads claims by tag |
 
-## Phased build plan (Claims = Phase 6 of the PCG roadmap)
+## State as of 2026-11-02
 
-1. **6a — Registry core** ✅ **DONE** (`eece999`): `WorldClaims` plugin: `UWorldClaimRegistry` +
-   `UWorldClaimComponent` + `AWorldClaimVolume` + `FWorldClaimDisplayInfo` + tag-based actor tagging +
-   spatial query API (box / point / highest-priority, gameplay-tag filtered). Deps Core/Engine/GameplayTags
-   only; `EnabledByDefault` (no uproject edit). PIE-verified: overlapping volumes register on BeginPlay,
-   queries resolve count/point/box/priority, owners tagged `Claim`, clean unregister on EndPlay.
-2. **6b — PCG consumption** ✅ **DONE** (all three policies): decoration graphs read claim actors by tag →
-   exclusion (**Suppress**), own decoration (**OwnGraph**), partial fade (**Blend**). Native `Claim.*` tags +
-   actor-tag mirroring + runtime footprint box; recipes (`Difference` / `Intersection` / `Random Choice`) all
-   PIE-verified by per-zone instance counts. A true edge-graded Blend falloff is a later refinement.
-3. **6c — Generation conditioning** — CPU **heightmap modes** ✅ **DONE**: `IVoxelTerrainConditioner` +
-   `FVoxelConditioningZone` hook in VoxelWorlds generation. The chunk manager gathers zones per chunk into the
-   generation request; the CPU generator blends the per-column terrain height toward each zone's target
-   (smoothstep falloff) before the SDF — so density/material/surface all flatten, deterministically, no edit
-   storage. Applied to **both heightmap modes — InfinitePlane and IslandBowl**
-   (`VoxelWorlds.Generation.Conditioning.{FlattensTerrain,FlattensIslandBowl}`); the GPU heightmap branch conditions
-   too (`GpuApplyConditioning`). **SphericalPlanet** ✅ (spherical Phase 5, 2026-10-17; VoxelWorlds
-   `WORLD_MODES_REVIEW_PLAN.md` §19): a planet zone is a cap on the datum sphere (`FVoxelConditioningZone::Direction`,
-   great-circle radii, an altitude target), applied on the CPU and the GPU; a conditioner answers
-   `GatherConditioningOnSphere` for a planet (the POI conditioner returns its flattened POIs as caps). On a planet a
-   POI's claims stand in its pad's tangent frame; the edit validator, scatter's suppression and the registry's point
-   query already invert the claim's transform, so rotated claims protect and suppress unchanged (the registry's box
-   query stays an AABB of the oriented box). World Partition stays deferred for planets. The game-side
-   **claims-driven** conditioner impl is 6d.
-4. **6d — Seed-based POI placement** ✅ **DONE** (in-tree plugin `VoxelWorldPOI`, parent repo): deterministic
-   seed-hash placement (`FPOIPlacement`) → a per-POI `FVoxelConditioningZone` (via `FPOITerrainConditioner :
-   IVoxelTerrainConditioner`, flattening to the natural ground height) **and** an `AWorldClaimVolume`
-   (`Claim.POI.City` + `Claim.Decoration.Suppress`). `UPOIPlacementSubsystem` resolves the chunk manager,
-   registers the conditioner, and spawns POI claims. Unit-verified (`VoxelWorlds.POI.*`: determinism,
-   cross-region consistency, conditioner zones); PIE-verified (seed 4325 → 11 deterministic POI claims
-   registered + conditioner registered). The bridge that closes the loop: claims ↔ conditioning ↔ PCG.
-5. **6e — Runtime placements** ✅ **DONE** (`VoxelWorldPOI`): `UVoxelWorldPOIPlacement::PlaceCampsite` flattens
-   already-generated terrain to a target height in a cylinder via a **System edit on the existing Edit Layer**
-   (`UVoxelEditManager::ApplyEdit`, `EEditSource::System`, batched in a Begin/EndEditOperation → dirties chunks →
-   re-mesh — the same path as digging) **and** registers a `Claim.Construction.Camp` (+ `Decoration.Suppress`)
-   claim. No new terrain mechanism — claims + the edit layer compose. PIE-verified: a campsite → flat pad
-   re-meshed (2533 voxel edits) + claim registered. Forward link: claim-dirty → PCG re-decorate is Phase 7.
-6. **7 — Claim-dirty → throttled PCG re-decorate** ✅ **DONE** (`VoxelWorldPOI`): `UWorldClaimRegistry` now
-   fires `OnClaimsChanged(FBox ChangedBounds)` on register/unregister; a game-level
-   `UClaimDecorationRefreshSubsystem` (a `UTickableWorldSubsystem`, the one place that may depend on BOTH
-   WorldClaims *and* PCG without crossing a plugin boundary) listens, accumulates the changed bounds, and on a
-   **debounce** window (`DebounceSeconds`, default 0.4) force-regenerates every `UPCGComponent` whose grid
-   bounds overlap them (`GenerateLocal(true)`, re-querying claims so the `Difference`/`Intersection` clears or
-   restores). PCG's own actor-change tracking is **editor-only**, so an explicit runtime bridge is required; the
-   debounce coalesces claim bursts so churn doesn't thrash PCG. PIE-verified: a runtime campsite
-   (`Claim.Decoration.Suppress` at (300,300)) → registry 11→12 → ~0.4 s later the bridge auto-regenerated the
-   **2** overlapping PCG volumes (the map's biome decoration + a probe) with **no manual generate**; a far-away
-   startup POI claim correctly regenerated 0. The Difference-based suppression *clearing* on regen was proven in
-   6b. **Deferred**: cell-precise dirtying (currently whole-component regen of overlappers) and edit-layer dirty
-   → PCG (terrain-shape-only changes; claims are the semantic trigger).
-7. **Consumers**: Map/Compass icons from the registry; AI avoidance (later).
+Everything the claims model set out to do is built (the PCG roadmap's phases 6a-6e and 7, 2026-06 to 2026-07, and
+the planet work of 2026-10-17):
+
+- **The registry** (6a): the component, the volume, display info, actor tagging and the box / point /
+  highest-priority queries. A PIE world registers overlapping volumes on BeginPlay and unregisters them on EndPlay.
+- **PCG consumption** (6b): the three recipes above, each verified in PIE by per-zone instance counts. A true
+  edge-graded Blend falloff is still a refinement for later.
+- **Conditioning** (6c): every world mode, CPU and GPU, planets by radial caps
+  (`VoxelWorlds.Generation.Conditioning.{FlattensTerrain,FlattensIslandBowl}`, `VoxelWorlds.POI.Planet.ConditionerZones`).
+- **Seed-based placement** (6d): VoxelWorldPOI's placement registers each POI's claim and conditioning zone
+  (`VoxelWorlds.POI.*`).
+- **Re-decoration** (7): `OnClaimsChanged` drives VoxelWorldPOI's `UPOIClaimDecorationRefreshSubsystem`, which
+  regenerates the overlapping PCG components after a 0.4 s debounce (PCG's own actor tracking is editor-only), and
+  `UPOIScatterClaimSuppressionSubsystem`, which keeps the scatter's exclusion volumes in step with the suppress claims.
+- **Consumers**: map and compass markers (`UPOIMapMarkerSubsystem`), edit protection (`Claim.Protection.NoEdit`,
+  `FPOIClaimEditValidator`) and the wildlife spawner's claim check. No AI avoidance consumes claims yet.
+- **Planets**: a POI's claims stand in its pad's tangent frame; the edit validator, scatter suppression and the
+  registry's point query invert the claim's transform, so rotated claims protect and suppress unchanged (the box query
+  stays an AABB of the oriented box).
 
 ## Open questions
 
-- Conditioner determinism/perf on async + GPU generation (per-chunk zone upload).
 - Claim shape → PCG: actor AABB vs the actual volume/spline (precision); Biome Core exclusion-spline
   falloff as the reference for `Blend`.
 - Priority resolution when many claims overlap (PCG difference ordering vs registry priority).
 - Replication granularity for construction claims (actor replication vs a replicated registry array).
-- Plugin name (`WorldClaims` vs `WorldAnnotations`); whether the integration glue is a thin plugin or the
-  game module.
+- Re-decoration regenerates whole PCG components that overlap a change; cell-precise dirtying, and edit-layer changes
+  driving re-decoration, are not built.
