@@ -153,7 +153,7 @@ Two timeframes, both also registering a claim:
 
 Implemented in VoxelWorlds: `FVoxelConditioningZone` + `IVoxelTerrainConditioner` in
 `Plugins/VoxelWorlds/Source/VoxelGeneration/Public/VoxelTerrainConditioning.h`; `UVoxelChunkManager::AddConditioningZone`
-/ `SetTerrainConditioner` gather zones per chunk into the generation request, and the generator blends each column's
+/ `AddTerrainConditioner` gather zones per chunk into the generation request, and the generator blends each column's
 terrain height toward the zone's target (smoothstep falloff) before the SDF, so density, material and surface all
 flatten, deterministically, with no edit storage. Every world mode: InfinitePlane and IslandBowl on the CPU and the
 GPU (`GpuApplyConditioning`); on a planet a zone is a cap on the datum sphere (`FVoxelConditioningZone::Direction`,
